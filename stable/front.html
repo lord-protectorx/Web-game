@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Рынок малины</title>
+  <style>
+    :root{
+      --bg:#0f172a; --panel:#0b1327; --card:#111827; --text:#e5e7eb; --muted:#94a3b8;
+      --border:rgba(255,255,255,.08); --shadow:0 10px 30px rgba(0,0,0,.35);
+      --green:#22c55e; --blue:#38bdf8; --tile:#0a1020; --radius:16px;
+      /* размер тайла (~1.5 раза меньше прежнего авторазмера) */
+      --tile-size: 64px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,Cantarell,Arial;
+      background:
+        radial-gradient(1200px 600px at 10% -20%, #112244, transparent),
+        radial-gradient(900px 500px at 120% 0%, #041221, transparent),
+        var(--bg);
+      color:var(--text)
+    }
+    .wrap{max-width:1280px; margin:0 auto; padding:20px}
+    header{display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:12px; margin-bottom:14px}
+    .brand{font-weight:800; letter-spacing:.3px}
+    .round{display:flex; gap:10px; align-items:center; background:var(--card); border:1px solid var(--border); padding:8px 12px; border-radius:999px}
+    .pill{background:rgba(56,189,248,.15); color:#a5f3fc; padding:4px 10px; border-radius:999px; font-weight:700}
+    .timer{--s:44px; width:var(--s); height:var(--s); border-radius:50%; display:grid; place-items:center; font-weight:800; border:2px solid var(--border); background:conic-gradient(#f59e0b 260deg, rgba(255,255,255,.08) 0)}
+
+    .layout{display:grid; grid-template-columns: 320px 1fr 320px; gap:14px}
+    .card{background:linear-gradient(180deg, rgba(255,255,255,.03), transparent), var(--card); border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow); padding:14px}
+    h2{margin:0 0 8px 0; font-size:18px}
+
+    .kpis{display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:8px 0 12px}
+    .kpi{background:rgba(255,255,255,.04); border:1px solid var(--border); border-radius:12px; padding:10px; font-size:14px}
+    .kpi b{display:block; margin-top:4px; font-size:18px}
+    .actions{display:grid; gap:8px}
+    .btn{display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:rgba(255,255,255,.03); color:var(--text); cursor:pointer; transition:.15s}
+    .btn:hover{transform:translateY(-1px); background:rgba(255,255,255,.06)}
+    .btn-a{border-color:rgba(34,197,94,.35); background:rgba(34,197,94,.10)}
+    .btn-b{border-color:rgba(56,189,248,.35); background:rgba(56,189,248,.10)}
+    .pricebox{display:grid; grid-template-columns:1fr auto; gap:8px; margin-top:10px}
+    .input{width:100%; padding:10px 12px; border-radius:12px; border:1px solid var(--border); background:#0a1020; color:var(--text)}
+    .cta{padding:10px 14px; border-radius:12px; font-weight:800; letter-spacing:.3px; border:1px solid rgba(255,255,255,.08); background:linear-gradient(90deg, #16a34a, #22c55e); color:white; cursor:pointer}
+
+    .center{display:grid; grid-template-rows:auto auto 1fr; gap:10px}
+    .market{display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:8px}
+    .market .tile-legend{grid-column:1 / -1; color:var(--muted); font-size:13px}
+
+    .map{background:var(--panel); border:1px solid var(--border); border-radius:16px; padding:16px}
+    /* фиксированный размер тайлов и уменьшение в ~1.5 раза */
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(5, var(--tile-size)); /* 5 столбцов */
+      grid-auto-rows: var(--tile-size);
+      justify-content:center; /* центрируем сетку по горизонтали */
+      gap:10px;
+    }
+    .tile{
+      width:var(--tile-size);
+      height:var(--tile-size);
+      background:var(--tile);
+      border:1px solid var(--border);
+      border-radius:12px;
+      display:grid;
+      place-items:center;
+      font-size:13px;
+      color:var(--muted);
+      cursor:pointer;
+      transition:.12s;
+      padding:2px
+    }
+    .tile:hover{transform:translateY(-2px); box-shadow:0 8px 20px rgba(0,0,0,.2)}
+    /* коэффициент в центре */
+    .coef-center{
+      display:flex; align-items:center; gap:6px;
+      font-weight:700; color:#e5e7eb; font-size:14px;
+      user-select:none;
+    }
+
+    .own-a{outline:2px solid rgba(34,197,94,.9); box-shadow:0 0 0 3px rgba(34,197,94,.25) inset}
+    .own-b{outline:2px solid rgba(56,189,248,.9); box-shadow:0 0 0 3px rgba(56,189,248,.25) inset}
+    .selected{outline:3px solid #eab308; box-shadow:0 0 0 3px rgba(234,179,8,.25) inset}
+
+    .legend{display:flex; gap:10px; align-items:center}
+    .dot{width:12px; height:12px; border-radius:50%}
+    .dot-a{background:var(--green)} .dot-b{background:var(--blue)} .dot-free{background:#64748b}
+
+    .notice{display:flex; justify-content:space-between; align-items:center; gap:10px; background:var(--card); border:1px dashed var(--border); border-radius:12px; padding:10px 12px; color:var(--muted)}
+    .next{padding:10px 14px; border-radius:10px; background:#1d4ed8; color:#fff; border:none; font-weight:800; cursor:pointer}
+
+    @media (max-width:1180px){ .layout{grid-template-columns: 1fr;} .center{order:-1} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="brand">🍓 Рынок малины</div>
+      <div class="round"><span class="pill">Раунд 3/10</span><span>Осталось времени: <b>00:45</b></span></div>
+      <div class="timer" aria-label="таймер">45</div>
+    </header>
+
+    <div class="layout">
+      <!-- LEFT: Farmer A -->
+      <section class="card" aria-labelledby="fa">
+        <h2 id="fa">👨‍🌾 Фермер A</h2>
+        <div class="kpis">
+          <div class="kpi">📍 Участков <b>8</b></div>
+          <div class="kpi">⚙️ Ср. коэф. <b>0.76</b></div>
+          <div class="kpi">💰 Баланс <b>5 200</b></div>
+          <div class="kpi">🍓 Урожай (прогноз) <b>168 кг</b></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-a">🛒 Купить выделенный участок (1000💰)</button>
+          <button class="btn btn-a">🛠 Улучшить мой участок (700💰)</button>
+          <button class="btn">⏭ Пропустить (рекультивация)</button>
+        </div>
+        <div class="pricebox">
+          <input class="input" placeholder="Цена продажи кг" type="number" min="1" step="1"/>
+          <button class="cta">Продать урожай</button>
+        </div>
+      </section>
+
+      <!-- CENTER: Map & Market -->
+      <section class="center">
+        <div class="notice">
+          <div>
+            🗺 <b>Свободно <span id="freeCount">—</span> / <span id="totalCount">—</span></b>
+            <div class="legend" style="margin-top:6px">
+              <span class="dot dot-free"></span><span class="muted">Свободно</span>
+              <span class="dot dot-a"></span><span class="muted">A</span>
+              <span class="dot dot-b"></span><span class="muted">B</span>
+            </div>
+          </div>
+          <button class="next">▶ Завершить ход</button>
+        </div>
+
+        <div class="map">
+          <div class="grid" id="grid"><!-- Tiles generated by JS --></div>
+        </div>
+
+        <div class="market">
+          <div class="kpi">Цена A <b id="pA">5</b></div>
+          <div class="kpi">Цена B <b id="pB">4</b></div>
+          <div class="kpi">Спрос Qᵈ = 100 − 5P <b>80</b></div>
+          <div class="kpi">Продажи (A/B), кг <b>0 / 80</b></div>
+          <div class="tile-legend">Подсказка: выдели свободный участок и нажми «Купить», либо выдели свой — «Улучшить».
+             Если оба пользователя выберут один участок для покупки, то купит тот, кто первее отправил заявку</div>
+        </div>
+      </section>
+
+      <!-- RIGHT: Farmer B -->
+      <section class="card" aria-labelledby="fb">
+        <h2 id="fb">👨‍🌾 Фермер B</h2>
+        <div class="kpis">
+          <div class="kpi">📍 Участков <b>6</b></div>
+          <div class="kpi">⚙️ Ср. коэф. <b>0.79</b></div>
+          <div class="kpi">💰 Баланс <b>5 450</b></div>
+          <div class="kpi">🍇 Урожай (прогноз) <b>162 кг</b></div>
+        </div>
+        <div class="actions">
+          <button class="btn btn-b">🛒 Купить выделенный участок</button>
+          <button class="btn btn-b">🛠 Улучшить мой участок 400 💰</button>
+          <button class="btn">⏭ Пропустить (рекультивация)</button>
+        </div>
+        <div class="pricebox">
+          <input class="input" placeholder="Цена продажи кг" type="number" min="1" step="1"/>
+          <button class="cta" style="background:linear-gradient(90deg, #0ea5e9, #38bdf8)">Продать урожай</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    // Генерация карты 5x7 с коэффициентами по близости к центру
+    const grid = document.getElementById('grid');
+    const W = 5, H = 7;                  // 5×7
+    const tiles = [];
+    const centerX = (W-1)/2;
+    const centerY = (H-1)/2;
+    const maxR = Math.hypot(centerX, centerY);
+
+    function coefByDistance(x, y){
+      const r = Math.hypot(x - centerX, y - centerY) / maxR; // 0 (центр) .. 1 (углы)
+      if (r <= 0.20) return 1.50;
+      if (r <= 0.35) return 1.30;
+      if (r <= 0.50) return 1.25;
+      if (r <= 0.65) return 1.10;
+      return 1.00;
+    }
+
+    for (let y=0; y<H; y++){
+      for (let x=0; x<W; x++){
+        const coef = coefByDistance(x, y);
+        const owner = 'free';
+        const premium = coef > 1.00;
+        tiles.push({x,y,coef,owner,premium});
+      }
+    }
+
+    // стартовые позиции фермеров: слева и справа по центру по Y
+    const ya = Math.floor(H/2);
+    const yb = Math.floor(H/2);
+    const leftIndex  = tiles.findIndex(t=>t.x===0    && t.y===ya);
+    const rightIndex = tiles.findIndex(t=>t.x===W-1 && t.y===yb);
+    if (leftIndex  >= 0) tiles[leftIndex].owner  = 'A';
+    if (rightIndex >= 0) tiles[rightIndex].owner = 'B';
+
+    let selectedIndex = null;
+
+    tiles.forEach((t,i)=>{
+      const el = document.createElement('div');
+      el.className = 'tile'+(t.owner==='A'?' own-a':t.owner==='B'?' own-b':'');
+      el.innerHTML = `<div class="coef-center">${t.premium?'⭐':''} ${t.coef.toFixed(2)}</div>`;
+      el.title = `${t.owner==='free'?'Свободно':'Принадлежит '+t.owner} • k=${t.coef}`;
+      el.addEventListener('click',()=>{
+        [...grid.children].forEach(c=>c.classList.remove('selected'));
+        el.classList.add('selected');
+        selectedIndex = i;
+      });
+      grid.appendChild(el);
+    });
+
+    // динамический счётчик свободных/всего
+    const freeCount = tiles.filter(t=>t.owner==='free').length;
+    document.getElementById('freeCount').textContent  = freeCount;
+    document.getElementById('totalCount').textContent = tiles.length;
+  </script>
+</body>
+</html>

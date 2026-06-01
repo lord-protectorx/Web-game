@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Realtime Buttons</title>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      height: 100vh;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: #f5f5f5;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 40px;
+    }
+
+    button {
+      width: 200px;
+      height: 200px;
+      font-size: 72px;
+      font-weight: bold;
+      border: none;
+      border-radius: 16px;
+      cursor: pointer;
+      color: white;
+    }
+
+    .btn-a {
+      background-color: #2563eb; /* синий */
+    }
+
+    .btn-b {
+      background-color: #dc2626; /* красный */
+    }
+
+    #log {
+      margin-top: 30px;
+      font-size: 18px;
+      color: #333;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="buttons">
+    <button class="btn-a" id="btnA">A</button>
+    <button class="btn-b" id="btnB">B</button>
+  </div>
+
+  <div id="log">Ожидание…</div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const log = document.getElementById("log");
+    const socket = io();
+
+    document.getElementById("btnA").addEventListener("click", () => {
+      socket.emit("button_click", "A");
+    });
+
+    document.getElementById("btnB").addEventListener("click", () => {
+      socket.emit("button_click", "B");
+    });
+
+    socket.on("button_update", (data) => {
+      log.textContent = `Нажата кнопка ${data.button}`;
+    });
+  </script>
+
+</body>
+</html>
