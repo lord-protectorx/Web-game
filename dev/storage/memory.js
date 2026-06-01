@@ -1,5 +1,4 @@
 const { createInitialState } = require('../game/state');
-const { startGame } = require('../game/engine');
 
 const rooms = new Map();
 
@@ -12,7 +11,6 @@ function createRoom(roomId) {
     processingQueue: false,
   };
 
-  startGame(room, Date.now());
   rooms.set(roomId, room);
   return room;
 }

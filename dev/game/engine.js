@@ -170,7 +170,10 @@ function applyAction(room, role, action) {
   }
 
   if (state.status !== 'running') {
-    return reject(action && action.actionId, 'GAME_NOT_RUNNING', 'Игра уже завершена');
+    const message = state.status === 'waiting'
+      ? 'Игра ещё не началась. Ожидание соперника'
+      : 'Игра уже завершена';
+    return reject(action && action.actionId, 'GAME_NOT_RUNNING', message);
   }
 
   if (!action || typeof action !== 'object') {
@@ -230,11 +233,11 @@ function applyAction(room, role, action) {
 
   if (type === 'SET_PRICE') {
     const price = Number(payload.price);
-    if (!Number.isFinite(price) || price <= 0) {
-      return reject(actionId, 'INVALID_PRICE', 'Цена должна быть положительным числом');
+    if (!Number.isFinite(price) || price <= 0 || !Number.isInteger(price)) {
+      return reject(actionId, 'INVALID_PRICE', 'Цена должна быть положительным целым числом');
     }
 
-    state.players[role].price = round2(price);
+    state.players[role].price = price;
     recomputeDerivedState(state);
     return { changed: true };
   }

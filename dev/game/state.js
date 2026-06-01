@@ -4,7 +4,7 @@ const BASE_YIELD = 20;
 const ROUND_SECONDS = 60;
 const MAX_ROUNDS = 10;
 const INITIAL_BALANCE = 5000;
-const DEFAULT_PRICE = 5;
+const DEFAULT_PRICE = 100;
 const MAX_PLOT_K = 1.5;
 
 function round2(value) {

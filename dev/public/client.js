@@ -97,6 +97,102 @@
     return `${myUserId || 'anon'}-${Date.now()}-${actionCounter}`;
   }
 
+  function round2(value) {
+    return Number(value.toFixed(2));
+  }
+
+  function getBuyPrice(tileBonus) {
+    const key = Number(tileBonus).toFixed(2);
+    if (key === '1.00') return 800;
+    if (key === '1.10') return 1000;
+    if (key === '1.25') return 1200;
+    if (key === '1.30') return 1500;
+    if (key === '1.50') return 2000;
+    return 800;
+  }
+
+  function getUpgradeCost(tile) {
+    const diff = Math.max(0, round2(tile.k - tile.tileBonus));
+    const upgradedSteps = Math.round(diff / 0.05);
+
+    if (upgradedSteps <= 0) return 400;
+    if (upgradedSteps === 1) return 700;
+    return 1000;
+  }
+
+  function getTileById(tileId) {
+    if (!state || !tileId) return null;
+    return state.tiles.find((tile) => tile.id === tileId) || null;
+  }
+
+  function getSelectedTile() {
+    return getTileById(selectedTileId);
+  }
+
+  function hasAdjacentOwnedTile(role, x, y) {
+    if (!state) return false;
+
+    const neighbors = [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ];
+
+    return neighbors.some(([nx, ny]) => state.tiles.some((tile) => (
+      tile.x === nx && tile.y === ny && tile.owner === role
+    )));
+  }
+
+  function formatCostLabel(value) {
+    return `${formatMoney(value)} ₽`;
+  }
+
+  function setButtonCaption(button, baseText, metaText) {
+    button.textContent = metaText ? `${baseText} (${metaText})` : baseText;
+  }
+
+  function updateActionCaptions(selectedTile) {
+    const buyBase = 'Купить выделенный участок';
+    const upgradeBase = 'Улучшить выделенный участок';
+
+    if (!selectedTile) {
+      setButtonCaption(els.buyBtnA, buyBase, 'выберите клетку');
+      setButtonCaption(els.buyBtnB, buyBase, 'выберите клетку');
+      setButtonCaption(els.upgradeBtnA, upgradeBase, 'выберите клетку');
+      setButtonCaption(els.upgradeBtnB, upgradeBase, 'выберите клетку');
+      return;
+    }
+
+    if (selectedTile.owner === null) {
+      setButtonCaption(els.buyBtnA, buyBase, `цена ${formatCostLabel(getBuyPrice(selectedTile.tileBonus))}`);
+      setButtonCaption(els.buyBtnB, buyBase, `цена ${formatCostLabel(getBuyPrice(selectedTile.tileBonus))}`);
+    } else {
+      setButtonCaption(els.buyBtnA, buyBase, 'клетка занята');
+      setButtonCaption(els.buyBtnB, buyBase, 'клетка занята');
+    }
+
+    if (selectedTile.owner === 'A') {
+      if (selectedTile.k >= state.maxPlotK) {
+        setButtonCaption(els.upgradeBtnA, upgradeBase, 'макс. уровень');
+      } else {
+        setButtonCaption(els.upgradeBtnA, upgradeBase, `цена ${formatCostLabel(getUpgradeCost(selectedTile))}`);
+      }
+    } else {
+      setButtonCaption(els.upgradeBtnA, upgradeBase, 'не ваша клетка');
+    }
+
+    if (selectedTile.owner === 'B') {
+      if (selectedTile.k >= state.maxPlotK) {
+        setButtonCaption(els.upgradeBtnB, upgradeBase, 'макс. уровень');
+      } else {
+        setButtonCaption(els.upgradeBtnB, upgradeBase, `цена ${formatCostLabel(getUpgradeCost(selectedTile))}`);
+      }
+    } else {
+      setButtonCaption(els.upgradeBtnB, upgradeBase, 'не ваша клетка');
+    }
+  }
+
   function emitAction(type, payload = {}) {
     if (myRole !== 'A' && myRole !== 'B') {
       setStatus('Действия недоступны для наблюдателя', true);
@@ -141,24 +237,54 @@
   function setControlsEnabled() {
     const amA = myRole === 'A';
     const amB = myRole === 'B';
+    const selectedTile = getSelectedTile();
 
-    const gameStopped = Boolean(state && state.status !== 'running');
+    const gameRunning = Boolean(state && state.status === 'running');
+    const disableA = !amA || !gameRunning;
+    const disableB = !amB || !gameRunning;
+    const disableFinish = (!amA && !amB) || !gameRunning;
 
-    const disableA = !amA || gameStopped;
-    const disableB = !amB || gameStopped;
-    const disableFinish = (!amA && !amB) || gameStopped;
+    const canBuyA = Boolean(
+      amA
+      && gameRunning
+      && selectedTile
+      && selectedTile.owner === null
+      && hasAdjacentOwnedTile('A', selectedTile.x, selectedTile.y),
+    );
+    const canBuyB = Boolean(
+      amB
+      && gameRunning
+      && selectedTile
+      && selectedTile.owner === null
+      && hasAdjacentOwnedTile('B', selectedTile.x, selectedTile.y),
+    );
+    const canUpgradeA = Boolean(
+      amA
+      && gameRunning
+      && selectedTile
+      && selectedTile.owner === 'A'
+      && selectedTile.k < state.maxPlotK,
+    );
+    const canUpgradeB = Boolean(
+      amB
+      && gameRunning
+      && selectedTile
+      && selectedTile.owner === 'B'
+      && selectedTile.k < state.maxPlotK,
+    );
 
-    els.buyBtnA.disabled = disableA;
-    els.upgradeBtnA.disabled = disableA;
+    els.buyBtnA.disabled = !canBuyA;
+    els.upgradeBtnA.disabled = !canUpgradeA;
     els.setPriceBtnA.disabled = disableA;
     els.priceInputA.disabled = disableA;
 
-    els.buyBtnB.disabled = disableB;
-    els.upgradeBtnB.disabled = disableB;
+    els.buyBtnB.disabled = !canBuyB;
+    els.upgradeBtnB.disabled = !canUpgradeB;
     els.setPriceBtnB.disabled = disableB;
     els.priceInputB.disabled = disableB;
 
     els.finishBtn.disabled = disableFinish;
+    updateActionCaptions(selectedTile);
   }
 
   function renderGrid(tiles) {
@@ -168,29 +294,30 @@
       const el = document.createElement('button');
       el.type = 'button';
       el.className = 'tile';
-      el.classList.add(getCoefficientBandClass(tile.k));
+      el.classList.add(getBonusBandClass(tile.k));
 
       if (tile.owner === 'A') el.classList.add('own-a');
       if (tile.owner === 'B') el.classList.add('own-b');
       if (tile.id === selectedTileId) el.classList.add('selected');
 
-      el.innerHTML = `<div class="coef-center">${tile.k.toFixed(2)}</div>`;
-      el.title = `${tile.owner || 'Свободно'} • base ${tile.tileBonus.toFixed(2)} • k ${tile.k.toFixed(2)}`;
+      el.innerHTML = `<div class="coef-center"><span class="tile-value">${tile.k.toFixed(2)}</span></div>`;
+      el.title = `${tile.owner || 'Свободно'} • bonus ${tile.tileBonus.toFixed(2)} • k ${tile.k.toFixed(2)}`;
 
       el.addEventListener('click', () => {
         selectedTileId = tile.id;
         renderGrid(tiles);
+        setControlsEnabled();
       });
 
       els.grid.appendChild(el);
     });
   }
 
-  function getCoefficientBandClass(k) {
-    if (k <= 1.0) return 'coef-blue';
-    if (k <= 1.1) return 'coef-green';
-    if (k <= 1.25) return 'coef-yellow';
-    if (k <= 1.3) return 'coef-orange';
+  function getBonusBandClass(tileBonus) {
+    if (tileBonus <= 1.0) return 'coef-blue';
+    if (tileBonus <= 1.1) return 'coef-green';
+    if (tileBonus <= 1.25) return 'coef-yellow';
+    if (tileBonus <= 1.3) return 'coef-orange';
     return 'coef-red';
   }
 
@@ -212,6 +339,7 @@
   }
 
   function render(nextState) {
+    const prevStatus = state ? state.status : null;
     state = nextState;
 
     els.roundLabel.textContent = `Раунд ${state.round}/${state.maxRounds}`;
@@ -237,11 +365,17 @@
       els.salesMetric.textContent = '— / —';
     }
 
+    if (!state.tiles.some((tile) => tile.id === selectedTileId)) {
+      selectedTileId = null;
+    }
+
     updateTimer(state.secondsLeft);
     setControlsEnabled();
 
-    if (!state.tiles.some((tile) => tile.id === selectedTileId)) {
-      selectedTileId = null;
+    if (state.status === 'waiting') {
+      setStatus('Ожидание соперника. Игра начнётся автоматически после его подключения.');
+    } else if (prevStatus === 'waiting' && state.status === 'running') {
+      setStatus('Соперник подключился. Раунд начался.');
     }
 
     renderGrid(state.tiles);
@@ -293,8 +427,8 @@
 
   els.setPriceBtnA.addEventListener('click', () => {
     const price = readPrice(els.priceInputA);
-    if (!Number.isFinite(price) || price <= 0) {
-      setStatus('Введите корректную цену > 0', true);
+    if (!Number.isFinite(price) || price <= 0 || !Number.isInteger(price)) {
+      setStatus('Введите целую цену > 0', true);
       return;
     }
 
@@ -303,8 +437,8 @@
 
   els.setPriceBtnB.addEventListener('click', () => {
     const price = readPrice(els.priceInputB);
-    if (!Number.isFinite(price) || price <= 0) {
-      setStatus('Введите корректную цену > 0', true);
+    if (!Number.isFinite(price) || price <= 0 || !Number.isInteger(price)) {
+      setStatus('Введите целую цену > 0', true);
       return;
     }
 

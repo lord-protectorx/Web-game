@@ -1,5 +1,5 @@
 const DEMAND_SLOPE = 0;
-const COST_PER_KG = 2;
+const COST_PER_KG = 0;
 const ROUND_DEMAND_SCHEDULE = {
   1: 60,
   2: 70,
@@ -28,40 +28,62 @@ function demandAtPrice(round, price) {
   return demandIntercept(round);
 }
 
-function calcPenalty(price, soldVolume) {
-  return price < COST_PER_KG ? round2(0.5 * soldVolume) : 0;
+function calcPenalty() {
+  return 0;
 }
 
 function calcProfit(price, soldVolume) {
-  const penalty = calcPenalty(price, soldVolume);
-  const profit = round2(soldVolume * (price - COST_PER_KG) - penalty);
-  return { penalty, profit };
+  return {
+    penalty: 0,
+    profit: round2(soldVolume * price),
+  };
 }
 
-function settleEqualPrice(round, price, productionA, productionB) {
-  const totalDemand = demandAtPrice(round, price);
+function allocateDemandByPrices(totalDemand, priceA, priceB, capacityA, capacityB) {
+  let soldA = 0;
+  let soldB = 0;
+
+  if (priceA < priceB) {
+    soldA = Math.min(totalDemand, capacityA);
+    const remaining = Math.max(0, totalDemand - soldA);
+    soldB = Math.min(remaining, capacityB);
+    return { soldA: round2(soldA), soldB: round2(soldB) };
+  }
+
+  if (priceB < priceA) {
+    soldB = Math.min(totalDemand, capacityB);
+    const remaining = Math.max(0, totalDemand - soldB);
+    soldA = Math.min(remaining, capacityA);
+    return { soldA: round2(soldA), soldB: round2(soldB) };
+  }
+
   const halfDemand = totalDemand / 2;
+  soldA = Math.min(halfDemand, capacityA);
+  soldB = Math.min(totalDemand - halfDemand, capacityB);
 
-  let soldA = Math.min(productionA, halfDemand);
-  let soldB = Math.min(productionB, halfDemand);
+  let remaining = Math.max(0, totalDemand - soldA - soldB);
+  if (remaining > 0) {
+    const spareA = Math.max(0, capacityA - soldA);
+    const spareB = Math.max(0, capacityB - soldB);
 
-  const overflowFromA = halfDemand - soldA;
-  if (overflowFromA > 0) {
-    const spareB = Math.max(0, productionB - soldB);
-    soldB += Math.min(overflowFromA, spareB);
+    if (spareA >= spareB) {
+      const extraA = Math.min(remaining, spareA);
+      soldA += extraA;
+      remaining -= extraA;
+      if (remaining > 0) {
+        soldB += Math.min(remaining, spareB);
+      }
+    } else {
+      const extraB = Math.min(remaining, spareB);
+      soldB += extraB;
+      remaining -= extraB;
+      if (remaining > 0) {
+        soldA += Math.min(remaining, spareA);
+      }
+    }
   }
 
-  const overflowFromB = halfDemand - soldB;
-  if (overflowFromB > 0) {
-    const spareA = Math.max(0, productionA - soldA);
-    soldA += Math.min(overflowFromB, spareA);
-  }
-
-  return {
-    totalDemand,
-    soldA: round2(soldA),
-    soldB: round2(soldB),
-  };
+  return { soldA: round2(soldA), soldB: round2(soldB) };
 }
 
 function settleRound({
@@ -71,32 +93,17 @@ function settleRound({
   productionA,
   productionB,
 }) {
+  const capacityA = round2(Math.max(0, Number(productionA) || 0));
+  const capacityB = round2(Math.max(0, Number(productionB) || 0));
   const a = demandIntercept(round);
   const b = DEMAND_SLOPE;
   const demandAtA = demandAtPrice(round, priceA);
   const demandAtB = demandAtPrice(round, priceB);
 
-  let soldA = 0;
-  let soldB = 0;
-  let totalDemand = 0;
-
-  if (priceA < priceB) {
-    totalDemand = demandAtA;
-    soldA = Math.min(productionA, totalDemand);
-    soldB = 0;
-  } else if (priceB < priceA) {
-    totalDemand = demandAtB;
-    soldB = Math.min(productionB, totalDemand);
-    soldA = 0;
-  } else {
-    const equal = settleEqualPrice(round, priceA, productionA, productionB);
-    totalDemand = equal.totalDemand;
-    soldA = equal.soldA;
-    soldB = equal.soldB;
-  }
-
-  soldA = round2(soldA);
-  soldB = round2(soldB);
+  const totalDemand = demandIntercept(round);
+  const allocation = allocateDemandByPrices(totalDemand, priceA, priceB, capacityA, capacityB);
+  const soldA = allocation.soldA;
+  const soldB = allocation.soldB;
 
   const revenueA = round2(soldA * priceA);
   const revenueB = round2(soldB * priceB);
@@ -113,18 +120,18 @@ function settleRound({
     players: {
       A: {
         price: priceA,
-        production: round2(productionA),
+        production: capacityA,
         soldVolume: soldA,
-        unsoldVolume: round2(Math.max(0, productionA - soldA)),
+        unsoldVolume: round2(Math.max(0, capacityA - soldA)),
         revenue: revenueA,
         penalty: profitA.penalty,
         profit: profitA.profit,
       },
       B: {
         price: priceB,
-        production: round2(productionB),
+        production: capacityB,
         soldVolume: soldB,
-        unsoldVolume: round2(Math.max(0, productionB - soldB)),
+        unsoldVolume: round2(Math.max(0, capacityB - soldB)),
         revenue: revenueB,
         penalty: profitB.penalty,
         profit: profitB.profit,
@@ -137,6 +144,7 @@ module.exports = {
   DEMAND_SLOPE,
   COST_PER_KG,
   ROUND_DEMAND_SCHEDULE,
+  allocateDemandByPrices,
   demandIntercept,
   demandAtPrice,
   calcPenalty,

@@ -77,3 +77,27 @@ test('upgrade cannot push tile coefficient above 1.50', () => {
   assert.equal(second.rejected.code, 'K_MAXED');
   assert.equal(tile.k, 1.5);
 });
+
+test('default player price is 100 and non-integer price is rejected', () => {
+  const room = createRoom();
+
+  assert.equal(room.state.players.A.price, 100);
+  assert.equal(room.state.players.B.price, 100);
+
+  const badPrice = applyAction(room, 'A', {
+    actionId: 'a-price-decimal',
+    type: 'SET_PRICE',
+    payload: { price: 99.5 },
+  });
+
+  assert.equal(badPrice.rejected.code, 'INVALID_PRICE');
+
+  const goodPrice = applyAction(room, 'A', {
+    actionId: 'a-price-int',
+    type: 'SET_PRICE',
+    payload: { price: 101 },
+  });
+
+  assert.equal(goodPrice.changed, true);
+  assert.equal(room.state.players.A.price, 101);
+});

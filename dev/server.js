@@ -3,7 +3,7 @@ const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
 
-const { applyAction, getPublicState, tick } = require('./game/engine');
+const { applyAction, getPublicState, tick, startGame } = require('./game/engine');
 const { createRoom, getRoom, getRooms } = require('./storage/memory');
 
 const PORT = 3000;
@@ -148,6 +148,18 @@ function emitRoomError(socket, code, message) {
   socket.emit('room_error', { code, message });
 }
 
+function maybeStartRoomGame(room) {
+  if (!room || room.state.status !== 'waiting') return false;
+
+  const { A, B } = room.state.players;
+  if (!A.userId || !B.userId) return false;
+
+  startGame(room, Date.now());
+  emitState(room);
+  emitRoundTick(room);
+  return true;
+}
+
 function joinRoomForGame(socket, payload = {}) {
   const roomId = normalizeRoomId(payload.roomId);
   if (!roomId) {
@@ -171,10 +183,13 @@ function joinRoomForGame(socket, payload = {}) {
   }
 
   bindSocketToRoom(socket, room, userId, role);
+  maybeStartRoomGame(room);
 
   socket.emit('hello', { userId, role, roomId });
   socket.emit('state_snapshot', { state: getPublicState(room) });
-  emitRoundTick(room);
+  if (room.state.status === 'running') {
+    emitRoundTick(room);
+  }
 }
 
 function processActionQueue(room) {
@@ -233,6 +248,7 @@ io.on('connection', (socket) => {
 
     const role = assignRole(room, userId);
     bindSocketToRoom(socket, room, userId, role);
+    maybeStartRoomGame(room);
 
     socket.emit('room_created', {
       roomId: room.roomId,
@@ -264,6 +280,7 @@ io.on('connection', (socket) => {
     }
 
     bindSocketToRoom(socket, room, userId, role);
+    maybeStartRoomGame(room);
 
     socket.emit('room_joined', {
       roomId,
