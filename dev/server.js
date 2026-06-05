@@ -4,6 +4,7 @@ const express = require('express');
 const { Server } = require('socket.io');
 
 const { applyAction, getPublicState, tick, startGame } = require('./game/engine');
+const { createInitialState } = require('./game/state');
 const { createRoom, getRoom, getRooms } = require('./storage/memory');
 
 const PORT = 3000;
@@ -160,6 +161,22 @@ function maybeStartRoomGame(room) {
   return true;
 }
 
+function restartRoomGame(room) {
+  const userA = room.state.players.A.userId;
+  const userB = room.state.players.B.userId;
+
+  room.state = createInitialState(room.roomId);
+  room.state.players.A.userId = userA;
+  room.state.players.B.userId = userB;
+  room.processedActionIds.clear();
+  room.actionQueue = [];
+  room.processingQueue = false;
+
+  if (!maybeStartRoomGame(room)) {
+    emitState(room);
+  }
+}
+
 function joinRoomForGame(socket, payload = {}) {
   const roomId = normalizeRoomId(payload.roomId);
   if (!roomId) {
@@ -313,6 +330,22 @@ io.on('connection', (socket) => {
     });
 
     processActionQueue(room);
+  });
+
+  socket.on('restart_game', () => {
+    const roomId = socket.data.roomId;
+    if (!roomId) {
+      emitRoomError(socket, 'NOT_IN_ROOM', 'Сначала подключитесь к комнате');
+      return;
+    }
+
+    const room = getRoom(roomId);
+    if (!room) {
+      emitRoomError(socket, 'ROOM_NOT_FOUND', 'Комната не найдена');
+      return;
+    }
+
+    restartRoomGame(room);
   });
 
   socket.on('disconnect', () => {

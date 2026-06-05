@@ -68,6 +68,17 @@
     salesMetric: document.getElementById('salesMetric'),
   };
 
+  const gameOverModal = new window.GameOverModal({
+    root: document.getElementById('gameOverModalRoot'),
+    onNewGame: () => {
+      setStatus('Создаём новую партию...');
+      socket.emit('restart_game');
+    },
+    onLobby: () => leaveToLobby(),
+    formatMoney,
+    formatShort,
+  });
+
   function formatMoney(value) {
     return new Intl.NumberFormat('ru-RU', {
       maximumFractionDigits: 2,
@@ -378,6 +389,12 @@
       setStatus('Соперник подключился. Раунд начался.');
     }
 
+    if (state.status === 'game_over') {
+      gameOverModal.show({ state });
+    } else if (gameOverModal.isVisible) {
+      gameOverModal.hide();
+    }
+
     renderGrid(state.tiles);
   }
 
@@ -492,6 +509,9 @@
   socket.on('game_over', ({ winner, finalBalances }) => {
     const winnerText = winner === 'draw' ? 'Ничья' : `Победитель: ${winner}`;
     setStatus(`${winnerText}. Балансы A/B: ${formatShort(finalBalances.A)} / ${formatShort(finalBalances.B)}`);
+    if (state) {
+      gameOverModal.show({ state, finalBalances });
+    }
     setControlsEnabled();
   });
 
