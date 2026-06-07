@@ -1,6 +1,16 @@
+/**
+ * public/client.js
+ *
+ * Клиентская логика игровой страницы /game. Этот файл подключается к Socket.IO,
+ * получает state_snapshot от сервера и рендерит интерфейс. Он НЕ создаёт поле
+ * и НЕ считает серверные деньги/продажи: все игровые решения подтверждаются сервером.
+ */
+
 (() => {
+  // io() доступен после подключения /socket.io/socket.io.js в index.html.
   const socket = io();
 
+  // Ключи совпадают с lobby.js: лобби сохраняет roomId/userId, игра их читает.
   const STORAGE_USER_ID = 'raspberry_market_user_id';
   const STORAGE_ROOM_ID = 'raspberry_market_room_id';
   const session = window.sessionStorage;
@@ -15,11 +25,13 @@
   let selectedTileId = null;
   let actionCounter = 0;
 
+  // Если игрок открыл /game напрямую без комнаты, возвращаем его в лобби.
   if (!roomId) {
     window.location.replace('/lobby');
     return;
   }
 
+  // Ссылки на DOM-элементы. Все id должны совпадать с public/index.html.
   const els = {
     roleLabel: document.getElementById('roleLabel'),
     roomText: document.getElementById('roomText'),
@@ -79,12 +91,24 @@
     formatShort,
   });
 
+  /**
+   * Форматирует деньги/числа для русской локали.
+   *
+   * @param {number} value - Число.
+   * @returns {string} Строка без лишних десятичных знаков.
+   */
   function formatMoney(value) {
     return new Intl.NumberFormat('ru-RU', {
       maximumFractionDigits: 2,
     }).format(value);
   }
 
+  /**
+   * Форматирует короткие числовые KPI.
+   *
+   * @param {number} value - Число.
+   * @returns {string} Форматированная строка.
+   */
   function formatShort(value) {
     return new Intl.NumberFormat('ru-RU', {
       minimumFractionDigits: 0,
@@ -92,26 +116,58 @@
     }).format(value);
   }
 
+  /**
+   * Возвращает текст роли для верхней строки UI.
+   *
+   * @param {'A'|'B'|null} role - Роль пользователя.
+   * @returns {string} Подпись роли.
+   */
   function roleText(role) {
     if (role === 'A') return 'Вы играете за фермера A';
     if (role === 'B') return 'Вы играете за фермера B';
     return 'Режим наблюдателя';
   }
 
+  /**
+   * Показывает статус/ошибку под игровым полем.
+   *
+   * @param {string} text - Текст статуса.
+   * @param {boolean} isError - Нужно ли подсветить как ошибку.
+   * @returns {void}
+   */
   function setStatus(text, isError = false) {
     els.status.textContent = text;
     els.status.style.color = isError ? '#fca5a5' : '#94a3b8';
   }
 
+  /**
+   * Создаёт уникальный actionId для идемпотентности действий.
+   *
+   * @returns {string} id, который сервер сохранит в processedActionIds.
+   */
   function createActionId() {
     actionCounter += 1;
     return `${myUserId || 'anon'}-${Date.now()}-${actionCounter}`;
   }
 
+  /**
+   * Округляет число до двух знаков после запятой.
+   *
+   * @param {number} value - Число.
+   * @returns {number} Округлённое число.
+   */
   function round2(value) {
     return Number(value.toFixed(2));
   }
 
+  /**
+   * Клиентская копия таблицы цен покупки для подсказки на кнопке.
+   *
+   * @param {number|string} tileBonus - Базовый бонус клетки.
+   * @returns {number} Цена покупки.
+   *
+   * Важно: сервер всё равно проверяет цену в engine.js. Здесь только UI-подсказка.
+   */
   function getBuyPrice(tileBonus) {
     const key = Number(tileBonus).toFixed(2);
     if (key === '1.00') return 800;
@@ -122,6 +178,12 @@
     return 800;
   }
 
+  /**
+   * Клиентская копия формулы стоимости улучшения для подписи кнопки.
+   *
+   * @param {object} tile - Выбранная клетка.
+   * @returns {number} Цена следующего апгрейда.
+   */
   function getUpgradeCost(tile) {
     const diff = Math.max(0, round2(tile.k - tile.tileBonus));
     const upgradedSteps = Math.round(diff / 0.05);
@@ -131,15 +193,34 @@
     return 1000;
   }
 
+  /**
+   * Находит клетку в последнем полученном state.
+   *
+   * @param {string|null} tileId - id клетки.
+   * @returns {object|null} Клетка или null.
+   */
   function getTileById(tileId) {
     if (!state || !tileId) return null;
     return state.tiles.find((tile) => tile.id === tileId) || null;
   }
 
+  /**
+   * Возвращает выбранную игроком клетку.
+   *
+   * @returns {object|null} Выбранная клетка или null.
+   */
   function getSelectedTile() {
     return getTileById(selectedTileId);
   }
 
+  /**
+   * Проверяет соседство выбранной клетки с владениями игрока.
+   *
+   * @param {'A'|'B'} role - Роль игрока.
+   * @param {number} x - x клетки.
+   * @param {number} y - y клетки.
+   * @returns {boolean} true, если покупка визуально доступна.
+   */
   function hasAdjacentOwnedTile(role, x, y) {
     if (!state) return false;
 
@@ -155,14 +236,34 @@
     )));
   }
 
+  /**
+   * Форматирует цену для текста кнопки.
+   *
+   * @param {number} value - Цена.
+   * @returns {string} Цена с символом валюты.
+   */
   function formatCostLabel(value) {
     return `${formatMoney(value)} ₽`;
   }
 
+  /**
+   * Меняет подпись кнопки действия.
+   *
+   * @param {HTMLButtonElement} button - Кнопка.
+   * @param {string} baseText - Основной текст.
+   * @param {string} metaText - Подсказка в скобках.
+   * @returns {void}
+   */
   function setButtonCaption(button, baseText, metaText) {
     button.textContent = metaText ? `${baseText} (${metaText})` : baseText;
   }
 
+  /**
+   * Обновляет подсказки цен на кнопках покупки/улучшения.
+   *
+   * @param {object|null} selectedTile - Текущая выбранная клетка.
+   * @returns {void}
+   */
   function updateActionCaptions(selectedTile) {
     const buyBase = 'Купить выделенный участок';
     const upgradeBase = 'Улучшить выделенный участок';
@@ -204,6 +305,13 @@
     }
   }
 
+  /**
+   * Отправляет игровое действие на сервер.
+   *
+   * @param {string} type - Тип действия: BUY_PLOT, UPGRADE_PLOT, SET_PRICE, FINISH_ROUND.
+   * @param {object} payload - Данные действия.
+   * @returns {void}
+   */
   function emitAction(type, payload = {}) {
     if (myRole !== 'A' && myRole !== 'B') {
       setStatus('Действия недоступны для наблюдателя', true);
@@ -217,6 +325,12 @@
     });
   }
 
+  /**
+   * Показывает только панель управления текущего игрока.
+   *
+   * @param {'A'|'B'|null} role - Роль пользователя.
+   * @returns {void}
+   */
   function setRoleUI(role) {
     const isA = role === 'A';
     const isB = role === 'B';
@@ -235,6 +349,12 @@
     els.priceBoxB.classList.toggle('hidden', !isB);
   }
 
+  /**
+   * Обновляет визуальный таймер.
+   *
+   * @param {number} secondsLeft - Сколько секунд осталось в раунде.
+   * @returns {void}
+   */
   function updateTimer(secondsLeft) {
     const total = state ? state.roundSeconds : 60;
     const ratio = total > 0 ? Math.max(0, Math.min(1, secondsLeft / total)) : 0;
@@ -245,6 +365,14 @@
     els.timer.style.background = `conic-gradient(#f59e0b ${deg}deg, rgba(255,255,255,.08) 0)`;
   }
 
+  /**
+   * Включает/выключает кнопки в зависимости от роли, состояния игры и выбранной клетки.
+   *
+   * @returns {void}
+   *
+   * Бизнес-логика UI: кнопка может быть активной только если серверное действие
+   * теоретически допустимо. Сервер всё равно остаётся финальным валидатором.
+   */
   function setControlsEnabled() {
     const amA = myRole === 'A';
     const amB = myRole === 'B';
@@ -298,6 +426,12 @@
     updateActionCaptions(selectedTile);
   }
 
+  /**
+   * Рисует поле по массиву tiles, полученному от сервера.
+   *
+   * @param {Array<object>} tiles - Клетки из state.tiles.
+   * @returns {void}
+   */
   function renderGrid(tiles) {
     els.grid.innerHTML = '';
 
@@ -324,6 +458,12 @@
     });
   }
 
+  /**
+   * Возвращает CSS-класс цвета клетки по текущему коэффициенту.
+   *
+   * @param {number} tileBonus - Обычно tile.k.
+   * @returns {string} CSS-класс coef-*.
+   */
   function getBonusBandClass(tileBonus) {
     if (tileBonus <= 1.0) return 'coef-blue';
     if (tileBonus <= 1.1) return 'coef-green';
@@ -332,6 +472,13 @@
     return 'coef-red';
   }
 
+  /**
+   * Рендерит KPI одного игрока в боковой панели.
+   *
+   * @param {'A'|'B'} role - Игрок.
+   * @param {object} player - state.players[role].
+   * @returns {void}
+   */
   function renderPlayerKpi(role, player) {
     if (role === 'A') {
       els.kpiAPlots.textContent = formatShort(player.kpi.numPlots);
@@ -349,6 +496,12 @@
     els.priceInputB.value = player.price;
   }
 
+  /**
+   * Главный render всей страницы игры.
+   *
+   * @param {object} nextState - state_snapshot от сервера.
+   * @returns {void}
+   */
   function render(nextState) {
     const prevStatus = state ? state.status : null;
     state = nextState;
@@ -398,11 +551,22 @@
     renderGrid(state.tiles);
   }
 
+  /**
+   * Читает цену из input.
+   *
+   * @param {HTMLInputElement} input - Поле цены.
+   * @returns {number} Число или NaN.
+   */
   function readPrice(input) {
     const value = Number(input.value);
     return Number.isFinite(value) ? value : NaN;
   }
 
+  /**
+   * Проверяет, выбрана ли клетка перед действием.
+   *
+   * @returns {string|null} tileId или null.
+   */
   function requireSelectedTile() {
     if (!selectedTileId) {
       setStatus('Сначала выберите клетку на карте', true);
@@ -412,12 +576,18 @@
     return selectedTileId;
   }
 
+  /**
+   * Очищает текущую комнату в storage браузера и возвращает в лобби.
+   *
+   * @returns {void}
+   */
   function leaveToLobby() {
     session.removeItem(STORAGE_ROOM_ID);
     local.removeItem(STORAGE_ROOM_ID);
     window.location.href = '/lobby';
   }
 
+  // Ниже идут обработчики DOM-кнопок: они только отправляют action на сервер.
   els.buyBtnA.addEventListener('click', () => {
     const tileId = requireSelectedTile();
     if (!tileId) return;
@@ -468,12 +638,14 @@
 
   els.backLobbyBtn.addEventListener('click', leaveToLobby);
 
+  // Socket.IO event: после подключения к серверу клиент входит в комнату из storage.
   socket.on('connect', () => {
     const payload = { roomId };
     if (myUserId) payload.userId = myUserId;
     socket.emit('join', payload);
   });
 
+  // Server -> Client: hello { userId, role, roomId }.
   socket.on('hello', ({ userId, role, roomId: connectedRoomId }) => {
     myUserId = userId;
     myRole = role;
@@ -492,20 +664,24 @@
     setControlsEnabled();
   });
 
+  // Server -> Client: state_snapshot { state }. Это главный источник данных для UI.
   socket.on('state_snapshot', ({ state: nextState }) => {
     render(nextState);
   });
 
+  // Server -> Client: round_tick { secondsLeft }.
   socket.on('round_tick', ({ secondsLeft }) => {
     updateTimer(secondsLeft);
   });
 
+  // Server -> Client: round_ended { roundResult }.
   socket.on('round_ended', ({ roundResult }) => {
     const pA = roundResult.players.A.profit;
     const pB = roundResult.players.B.profit;
     setStatus(`Раунд ${roundResult.round} завершён. Профит A/B: ${formatShort(pA)} / ${formatShort(pB)}`);
   });
 
+  // Server -> Client: game_over { winner, finalBalances }.
   socket.on('game_over', ({ winner, finalBalances }) => {
     const winnerText = winner === 'draw' ? 'Ничья' : `Победитель: ${winner}`;
     setStatus(`${winnerText}. Балансы A/B: ${formatShort(finalBalances.A)} / ${formatShort(finalBalances.B)}`);
@@ -515,10 +691,12 @@
     setControlsEnabled();
   });
 
+  // Server -> Client: action_rejected { actionId, code, message }.
   socket.on('action_rejected', ({ message, code }) => {
     setStatus(`Действие отклонено (${code}): ${message}`, true);
   });
 
+  // Server -> Client: room_error { code, message }.
   socket.on('room_error', ({ code, message }) => {
     setStatus(`Ошибка комнаты (${code}): ${message}`, true);
 
@@ -529,6 +707,7 @@
     }
   });
 
+  // Socket.IO event: временная потеря связи.
   socket.on('disconnect', () => {
     setStatus('Соединение потеряно, ожидаю переподключение', true);
   });

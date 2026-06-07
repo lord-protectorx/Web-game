@@ -1,8 +1,19 @@
+/**
+ * test/economy.test.js
+ *
+ * Unit-тесты экономики. Они проверяют, как спрос распределяется между игроками
+ * и как считается прибыль при ограниченном реальном урожае.
+ */
+
+// node:test - встроенный тестовый раннер Node.js.
 const test = require('node:test');
+// assert/strict используется для строгих проверок ожидаемых чисел.
 const assert = require('node:assert/strict');
 
+// Тестируем публичные функции economy.js напрямую, без запуска сервера.
 const { settleRound, demandAtPrice, ROUND_DEMAND_SCHEDULE } = require('../game/economy');
 
+// При равной цене спрос делится, но продажи не могут быть больше production.
 test('equal prices split demand but sales are capped by each player production', () => {
   const result = settleRound({
     round: 4,
@@ -19,6 +30,7 @@ test('equal prices split demand but sales are capped by each player production',
   assert.equal(result.players.B.soldVolume, 80);
 });
 
+// Если дешёвый игрок не может закрыть весь спрос урожаем, остаток получает второй игрок.
 test('if lowest price player has low production, remaining demand goes to second player', () => {
   const result = settleRound({
     round: 1,
@@ -37,6 +49,7 @@ test('if lowest price player has low production, remaining demand goes to second
   assert.equal(result.players.B.profit, 5700);
 });
 
+// Текущая модель спроса зависит только от номера раунда, а не от цены.
 test('market demand is fixed by round and does not depend on price', () => {
   const demandLowPrice = demandAtPrice(1, 1);
   const demandHighPrice = demandAtPrice(1, 999);

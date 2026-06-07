@@ -4,7 +4,14 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Рынок малины</title>
+  <!--
+    public/index.html
+    Игровая страница. Здесь описаны только HTML-разметка и CSS интерфейса:
+    поле, KPI игроков, кнопки действий, рынок и Game Over Modal.
+    Игровое состояние не создаётся в HTML - его присылает сервер через client.js.
+  -->
   <style>
+    /* Глобальные CSS-переменные темы: фон, карточки, границы и размер клетки поля. */
     :root {
       --bg:#0f172a; --panel:#0b1327; --card:#111827; --text:#e5e7eb; --muted:#94a3b8;
       --border:rgba(255,255,255,.08); --shadow:0 10px 30px rgba(0,0,0,.35);
@@ -356,6 +363,7 @@
       margin-bottom:6px;
     }
 
+    /* Стили полноэкранного окна завершения игры, которым управляет game-over-modal.js. */
     body.modal-open {
       overflow:hidden;
     }
@@ -542,6 +550,7 @@
       to { opacity:1; transform:scale(1); }
     }
 
+    /* Адаптация интерфейса под планшеты и телефоны. */
     @media (max-width:1180px) {
       .layout { grid-template-columns: 1fr; }
       .center { order:-1; }
@@ -615,6 +624,7 @@
   </style>
 </head>
 <body>
+  <!-- Основной UI игры. Его значения обновляет render(state) в public/client.js. -->
   <div class="wrap">
     <header>
       <div class="brand">Рынок малины</div>
@@ -629,6 +639,7 @@
     </div>
 
     <div class="layout" id="layoutRoot">
+      <!-- Панель игрока A. Для игрока B она скрывается клиентским JS. -->
       <section class="card player-card" id="panelA" aria-labelledby="fa">
         <h2 id="fa">Фермер A</h2>
         <div class="kpis">
@@ -647,6 +658,7 @@
         </div>
       </section>
 
+      <!-- Центральная зона: поле, легенда, кнопка завершения раунда и рыночные показатели. -->
       <section class="center">
         <div class="notice">
           <div>
@@ -673,6 +685,7 @@
         </div>
       </section>
 
+      <!-- Панель игрока B. Для игрока A она скрывается клиентским JS. -->
       <section class="card player-card" id="panelB" aria-labelledby="fb">
         <h2 id="fb">Фермер B</h2>
         <div class="kpis">
@@ -695,8 +708,10 @@
     <div class="status" id="statusText">Ожидание данных...</div>
   </div>
 
+  <!-- Компонент завершения игры сам вставит сюда свою разметку. -->
   <div id="gameOverModalRoot"></div>
 
+  <!-- Socket.IO клиент отдаётся сервером автоматически; остальные скрипты - из public/. -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="/game-over-modal.js?v=20260605"></script>
   <script src="/client.js?v=20260605"></script>

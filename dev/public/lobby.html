@@ -4,7 +4,13 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Рынок малины - Лобби</title>
+  <!--
+    public/lobby.html
+    Стартовая страница проекта. Пользователь создаёт комнату или вводит код,
+    а вся socket-логика находится в public/lobby.js.
+  -->
   <style>
+    /* Тёмная тема лобби и базовые design tokens. */
     :root {
       --bg: #0b1220;
       --panel: #111a2c;
@@ -311,8 +317,10 @@
   </style>
 </head>
 <body>
+  <!-- Левая карточка отвечает за вход в игру, правая объясняет правила. -->
   <main class="lobby-shell">
     <section class="top-grid">
+      <!-- Форма создания/подключения комнаты. id используются в lobby.js. -->
       <article class="card">
         <h1 class="lobby-title">Лобби</h1>
         <p class="lead">Создайте комнату и отправьте код сопернику, либо подключитесь по коду. После входа вы автоматически перейдёте в игру.</p>
@@ -338,6 +346,7 @@
         <div id="roomCode" class="code" aria-live="polite"></div>
       </article>
 
+      <!-- Информационная карточка правил; не влияет на игровую логику. -->
       <article class="card">
         <h2 class="how-title">КАК ИГРАТЬ</h2>
         <ul class="how-list">
@@ -399,6 +408,7 @@
       </article>
     </section>
 
+    <!-- Нижняя панель с ключевыми параметрами партии. -->
     <section class="card facts">
       <div class="fact">
         <div class="fact-icon">⏱</div>
@@ -431,6 +441,7 @@
     </section>
   </main>
 
+  <!-- Socket.IO клиент и логика лобби. -->
   <script src="/socket.io/socket.io.js"></script>
   <script src="/lobby.js"></script>
 </body>

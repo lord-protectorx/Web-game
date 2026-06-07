@@ -1,5 +1,23 @@
+/**
+ * public/game-over-modal.js
+ *
+ * Отдельный frontend-компонент модального окна завершения игры.
+ * Он получает уже готовое состояние от client.js, рассчитывает отображаемые
+ * строки таблицы и не меняет серверную игровую логику.
+ */
+
 (() => {
   class GameOverModal {
+    /**
+     * Создаёт DOM модального окна и подписывает кнопки.
+     *
+     * @param {object} options - Настройки компонента.
+     * @param {HTMLElement} options.root - Контейнер, куда будет вставлена модалка.
+     * @param {Function} options.onNewGame - Callback кнопки "Новая игра".
+     * @param {Function} options.onLobby - Callback кнопки "Вернуться в лобби".
+     * @param {Function} options.formatMoney - Форматирование денег.
+     * @param {Function} options.formatShort - Форматирование коротких чисел.
+     */
     constructor({ root, onNewGame, onLobby, formatMoney, formatShort }) {
       this.root = root;
       this.onNewGame = onNewGame;
@@ -43,6 +61,14 @@
       this.lobbyBtn.addEventListener('click', () => this.onLobby());
     }
 
+    /**
+     * Показывает модальное окно с финальными результатами.
+     *
+     * @param {object} data - Данные для модалки.
+     * @param {object} data.state - Последний gameState, полученный от сервера.
+     * @param {object} [data.finalBalances] - Финальные балансы из события game_over.
+     * @returns {void}
+     */
     show({ state, finalBalances }) {
       const rows = this.createRows(state, finalBalances);
       const winnerRow = rows[0];
@@ -65,6 +91,11 @@
       }
     }
 
+    /**
+     * Скрывает модальное окно.
+     *
+     * @returns {void}
+     */
     hide() {
       this.overlay.classList.add('hidden');
       document.body.classList.remove('modal-open');
@@ -72,12 +103,28 @@
       this.isVisible = false;
     }
 
+    /**
+     * Управляет busy-состоянием кнопок.
+     *
+     * @param {boolean} isBusy - true, если уже отправлен запрос новой игры.
+     * @returns {void}
+     */
     setBusy(isBusy) {
       this.newGameBtn.disabled = isBusy;
       this.lobbyBtn.disabled = isBusy;
       this.newGameBtn.textContent = isBusy ? 'Создаём...' : 'Новая игра';
     }
 
+    /**
+     * Формирует строки таблицы игроков.
+     *
+     * @param {object} state - Текущий gameState.
+     * @param {object} [finalBalances] - Балансы из game_over.
+     * @returns {Array<object>} Отсортированные игроки с местом, балансом и статистикой.
+     *
+     * Бизнес-логика отображения: итоговый капитал равен balance.
+     * "На складе" берётся из lastRoundResult.unsoldVolume последнего раунда.
+     */
     createRows(state, finalBalances = {}) {
       const lastRound = state.lastRoundResult && state.lastRoundResult.players
         ? state.lastRoundResult.players
@@ -109,6 +156,13 @@
       return rows;
     }
 
+    /**
+     * Выбирает специальную подпись по разнице между первым и вторым местом.
+     *
+     * @param {object} winnerRow - Игрок на 1 месте.
+     * @param {object} secondRow - Игрок на 2 месте.
+     * @returns {string} Подпись или пустая строка.
+     */
     getBattleNote(winnerRow, secondRow) {
       if (!winnerRow || !secondRow || winnerRow.balance <= 0) return '';
 
@@ -118,6 +172,12 @@
       return '';
     }
 
+    /**
+     * Рендерит HTML таблицы результатов.
+     *
+     * @param {Array<object>} rows - Строки игроков из createRows().
+     * @returns {string} HTML-разметка таблицы.
+     */
     renderRows(rows) {
       const header = `
         <div class="game-over-table-head">
@@ -145,5 +205,6 @@
     }
   }
 
+  // Компонент кладётся в window, чтобы public/client.js мог создать new GameOverModal(...).
   window.GameOverModal = GameOverModal;
 })();

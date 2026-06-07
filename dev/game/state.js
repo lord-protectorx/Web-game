@@ -1,3 +1,12 @@
+/**
+ * game/state.js
+ *
+ * Файл отвечает за создание начального серверного состояния игры:
+ * размеры поля, стартовые деньги, стартовые участки и базовые коэффициенты клеток.
+ * Здесь нет Socket.IO и нет UI - только чистые данные.
+ */
+
+// Константы правил игры. Их импортирует engine.js и использует createInitialState().
 const BOARD_WIDTH = 5;
 const BOARD_HEIGHT = 7;
 const BASE_YIELD = 20;
@@ -7,10 +16,27 @@ const INITIAL_BALANCE = 5000;
 const DEFAULT_PRICE = 100;
 const MAX_PLOT_K = 1.5;
 
+/**
+ * Округляет число до двух знаков после запятой.
+ *
+ * @param {number} value - Число для округления.
+ * @returns {number} Округлённое число.
+ */
 function round2(value) {
   return Number(value.toFixed(2));
 }
 
+/**
+ * Вычисляет базовый бонус клетки по её расстоянию от центра поля.
+ *
+ * @param {number} x - Горизонтальная координата клетки.
+ * @param {number} y - Вертикальная координата клетки.
+ * @param {number} width - Ширина поля.
+ * @param {number} height - Высота поля.
+ * @returns {number} Бонус участка: 1.00, 1.10, 1.25, 1.30 или 1.50.
+ *
+ * Бизнес-логика: центр поля ценнее, поэтому клетки ближе к центру дают больший k.
+ */
 function tileBonusByDistance(x, y, width, height) {
   const centerX = (width - 1) / 2;
   const centerY = (height - 1) / 2;
@@ -24,6 +50,13 @@ function tileBonusByDistance(x, y, width, height) {
   return 1.0;
 }
 
+/**
+ * Создаёт массив всех клеток игрового поля.
+ *
+ * @param {number} width - Ширина поля, по умолчанию BOARD_WIDTH.
+ * @param {number} height - Высота поля, по умолчанию BOARD_HEIGHT.
+ * @returns {Array<object>} Массив tile-объектов с id, координатами, owner, tileBonus и k.
+ */
 function createTiles(width = BOARD_WIDTH, height = BOARD_HEIGHT) {
   const tiles = [];
 
@@ -44,6 +77,12 @@ function createTiles(width = BOARD_WIDTH, height = BOARD_HEIGHT) {
   return tiles;
 }
 
+/**
+ * Создаёт стартовое состояние одного игрока.
+ *
+ * @param {'A'|'B'} role - Роль игрока.
+ * @returns {object} Объект игрока: деньги, цена, флаг готовности и KPI.
+ */
 function createPlayerState(role) {
   return {
     role,
@@ -59,6 +98,15 @@ function createPlayerState(role) {
   };
 }
 
+/**
+ * Создаёт начальное состояние комнаты.
+ *
+ * @param {string} roomId - Код комнаты.
+ * @returns {object} Полный gameState для хранения на сервере.
+ *
+ * Бизнес-логика: игрок A начинает слева по центру, игрок B - справа по центру.
+ * Игра сначала в статусе waiting и запускается сервером только после второго игрока.
+ */
 function createInitialState(roomId) {
   const tiles = createTiles();
   const centerY = Math.floor(BOARD_HEIGHT / 2);
@@ -97,6 +145,7 @@ function createInitialState(roomId) {
   };
 }
 
+// CommonJS export: эти значения импортируются через require(...) в других файлах Node.js.
 module.exports = {
   BOARD_WIDTH,
   BOARD_HEIGHT,

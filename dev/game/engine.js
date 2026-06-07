@@ -1,5 +1,16 @@
+/**
+ * game/engine.js
+ *
+ * Серверный игровой движок. Здесь применяются действия игроков,
+ * пересчитываются KPI, запускаются/заканчиваются раунды и проверяется таймер.
+ * Модуль не работает с DOM и не слушает socket-события напрямую: server.js
+ * вызывает эти функции и рассылает результат клиентам.
+ */
+
+// Экономические функции используются только в конце раунда и для preview спроса.
 const { demandAtPrice, demandIntercept, DEMAND_SLOPE, settleRound } = require('./economy');
 
+// Таблица цен покупки участка по его базовому бонусу tileBonus.
 const BUY_PRICE_BY_BONUS = {
   '1.00': 800,
   '1.10': 1000,
@@ -8,19 +19,46 @@ const BUY_PRICE_BY_BONUS = {
   '1.50': 2000,
 };
 
+/**
+ * Округляет число до двух знаков после запятой.
+ *
+ * @param {number} value - Число для округления.
+ * @returns {number} Округлённое число.
+ */
 function round2(value) {
   return Number(value.toFixed(2));
 }
 
+/**
+ * Приводит бонус клетки к строковому ключу таблицы цен.
+ *
+ * @param {number|string} tileBonus - Бонус клетки.
+ * @returns {string} Ключ вида "1.25".
+ */
 function normalizeBonus(tileBonus) {
   return Number(tileBonus).toFixed(2);
 }
 
+/**
+ * Возвращает цену покупки клетки по её tileBonus.
+ *
+ * @param {number|string} tileBonus - Базовый бонус участка.
+ * @returns {number} Стоимость покупки.
+ */
 function getBuyPrice(tileBonus) {
   const key = normalizeBonus(tileBonus);
   return BUY_PRICE_BY_BONUS[key] ?? BUY_PRICE_BY_BONUS['1.00'];
 }
 
+/**
+ * Рассчитывает стоимость следующего улучшения клетки.
+ *
+ * @param {object} tile - Клетка с tileBonus и текущим k.
+ * @returns {number} Стоимость апгрейда: 400, 700 или 1000.
+ *
+ * Бизнес-логика: чем больше шагов уже сделано выше базового tileBonus,
+ * тем дороже следующий шаг +0.05.
+ */
 function getUpgradeCost(tile) {
   const diff = Math.max(0, round2(tile.k - tile.tileBonus));
   const upgradedSteps = Math.round(diff / 0.05);
@@ -30,10 +68,26 @@ function getUpgradeCost(tile) {
   return 1000;
 }
 
+/**
+ * Ищет клетку в состоянии игры по id.
+ *
+ * @param {object} state - gameState комнаты.
+ * @param {string} tileId - id клетки вида "x,y".
+ * @returns {object|null} Найденная клетка или null.
+ */
 function getTileById(state, tileId) {
   return state.tiles.find((tile) => tile.id === tileId) || null;
 }
 
+/**
+ * Проверяет, есть ли рядом клетка текущего игрока.
+ *
+ * @param {object} state - gameState комнаты.
+ * @param {'A'|'B'} role - Роль игрока.
+ * @param {number} x - x выбранной клетки.
+ * @param {number} y - y выбранной клетки.
+ * @returns {boolean} true, если сверху/снизу/слева/справа есть своя клетка.
+ */
 function hasAdjacentOwnedTile(state, role, x, y) {
   const neighbors = [
     [x - 1, y],
@@ -48,6 +102,15 @@ function hasAdjacentOwnedTile(state, role, x, y) {
   });
 }
 
+/**
+ * Считает KPI одного игрока.
+ *
+ * @param {object} state - gameState комнаты.
+ * @param {'A'|'B'} role - Игрок.
+ * @returns {{numPlots: number, avgK: number, forecastYield: number}} KPI для UI.
+ *
+ * Бизнес-логика: production = numPlots * BASE_YIELD * avgK.
+ */
 function calculateKpiForRole(state, role) {
   const ownedTiles = state.tiles.filter((tile) => tile.owner === role);
   const numPlots = ownedTiles.length;
@@ -71,6 +134,14 @@ function calculateKpiForRole(state, role) {
   };
 }
 
+/**
+ * Пересчитывает производные поля state.
+ *
+ * @param {object} state - Изменяемый gameState.
+ * @returns {void}
+ *
+ * Производные поля: KPI игроков, количество свободных клеток и marketPreview.
+ */
 function recomputeDerivedState(state) {
   state.players.A.kpi = calculateKpiForRole(state, 'A');
   state.players.B.kpi = calculateKpiForRole(state, 'B');
@@ -84,6 +155,13 @@ function recomputeDerivedState(state) {
   };
 }
 
+/**
+ * Запускает игру в комнате.
+ *
+ * @param {object} room - Комната из storage/memory.js.
+ * @param {number} now - Timestamp в миллисекундах.
+ * @returns {void}
+ */
 function startGame(room, now = Date.now()) {
   const { state } = room;
 
@@ -98,6 +176,14 @@ function startGame(room, now = Date.now()) {
   recomputeDerivedState(state);
 }
 
+/**
+ * Создаёт стандартный объект отклонения действия.
+ *
+ * @param {string|undefined} actionId - id действия, если оно было передано.
+ * @param {string} code - Код ошибки для клиента.
+ * @param {string} message - Человекочитаемое сообщение.
+ * @returns {{rejected: {actionId: string|undefined, code: string, message: string}}}
+ */
 function reject(actionId, code, message) {
   return {
     rejected: {
@@ -108,6 +194,16 @@ function reject(actionId, code, message) {
   };
 }
 
+/**
+ * Завершает текущий раунд и при необходимости всю игру.
+ *
+ * @param {object} room - Комната с текущим state.
+ * @param {number} now - Timestamp в миллисекундах.
+ * @returns {object} Информация о завершении: roundResult, gameOver, winner, finalBalances.
+ *
+ * Бизнес-логика: profit из economy.settleRound прибавляется к балансам,
+ * после 10-го раунда status становится game_over.
+ */
 function endRound(room, now = Date.now()) {
   const { state } = room;
   if (state.status !== 'running') {
@@ -162,6 +258,17 @@ function endRound(room, now = Date.now()) {
   };
 }
 
+/**
+ * Применяет одно серверное действие игрока.
+ *
+ * @param {object} room - Комната, состояние которой будет изменено.
+ * @param {'A'|'B'} role - Роль игрока, отправившего действие.
+ * @param {{actionId: string, type: string, payload?: object}} action - Действие клиента.
+ * @returns {object} Результат: changed, duplicate, rejected или roundEnded.
+ *
+ * Обработка ошибок: функция не бросает исключения для обычных игровых ошибок,
+ * а возвращает rejected с кодом. Это удобно для Socket.IO события action_rejected.
+ */
 function applyAction(room, role, action) {
   const { state } = room;
 
@@ -192,6 +299,7 @@ function applyAction(room, role, action) {
 
   room.processedActionIds.add(actionId);
 
+  // BUY_PLOT: покупка свободной соседней клетки за цену, зависящую от tileBonus.
   if (type === 'BUY_PLOT') {
     const tile = getTileById(state, payload.tileId);
     if (!tile) return reject(actionId, 'PLOT_NOT_FOUND', 'Клетка не найдена');
@@ -211,6 +319,7 @@ function applyAction(room, role, action) {
     return { changed: true };
   }
 
+  // UPGRADE_PLOT: улучшение своей клетки на +0.05 до максимума maxPlotK.
   if (type === 'UPGRADE_PLOT') {
     const tile = getTileById(state, payload.tileId);
     if (!tile) return reject(actionId, 'PLOT_NOT_FOUND', 'Клетка не найдена');
@@ -231,6 +340,7 @@ function applyAction(room, role, action) {
     return { changed: true };
   }
 
+  // SET_PRICE: игрок задаёт целую положительную цену продажи за кг.
   if (type === 'SET_PRICE') {
     const price = Number(payload.price);
     if (!Number.isFinite(price) || price <= 0 || !Number.isInteger(price)) {
@@ -242,6 +352,7 @@ function applyAction(room, role, action) {
     return { changed: true };
   }
 
+  // FINISH_ROUND: игрок готов закончить раунд; если готовы оба, раунд закрывается сразу.
   if (type === 'FINISH_ROUND') {
     state.players[role].finishedRound = true;
     recomputeDerivedState(state);
@@ -260,6 +371,15 @@ function applyAction(room, role, action) {
   return reject(actionId, 'UNKNOWN_ACTION', `Неизвестный тип действия: ${type}`);
 }
 
+/**
+ * Проверяет таймер комнаты.
+ *
+ * @param {object} room - Комната.
+ * @param {number} now - Timestamp в миллисекундах.
+ * @returns {null|object} null, tick-объект или результат endRound().
+ *
+ * Используется server.js в setInterval, чтобы сервер сам завершал раунд по времени.
+ */
 function tick(room, now = Date.now()) {
   const { state } = room;
   if (state.status !== 'running') return null;
@@ -283,10 +403,19 @@ function tick(room, now = Date.now()) {
   return null;
 }
 
+/**
+ * Возвращает безопасную копию state для отправки клиенту.
+ *
+ * @param {object} room - Комната.
+ * @returns {object} Глубокая JSON-копия state.
+ *
+ * Почему копия: клиент не должен получить ссылку на настоящий серверный объект.
+ */
 function getPublicState(room) {
   return JSON.parse(JSON.stringify(room.state));
 }
 
+// Экспорт функций для server.js и unit-тестов.
 module.exports = {
   BUY_PRICE_BY_BONUS,
   startGame,
