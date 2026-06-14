@@ -373,9 +373,9 @@ engine_js --> economy_js
 9. `client.js` вызывает `render(state)`.
 
 
-![C4 SystemContext](c4 картинки/SystemContext.png)
-![C4 Component](c4 картинки/Component.png)
-![C4 Container](c4 картинки/Container.png)
+![C4 SystemContext](c4_images/SystemContext.png)
+![C4 Component](c4_images/Component.png)
+![C4 Container](c4_images/Container.png)
 
 # Экономическая игра «Рынок малины»
 
