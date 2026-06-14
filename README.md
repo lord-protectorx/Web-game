@@ -374,8 +374,9 @@ engine_js --> economy_js
 
 
 ![C4 SystemContext](c4_images/SystemContext.png)
-![C4 Component](c4_images/Component.png)
 ![C4 Container](c4_images/Container.png)
+![C4 Component](c4_images/Component.png)
+
 
 # Экономическая игра «Рынок малины»
 
