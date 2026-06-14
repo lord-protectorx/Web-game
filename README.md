@@ -48,6 +48,335 @@
 
 
 
+
+# Техническое описание реализации для разработчика
+
+Проект «Рынок малины» - multiplayer-игра на Node.js, Express и Socket.Io с сервер-авторитетной логикой. 
+
+## C4 System Context
+
+Система выглядит как браузерная игра для двух игроков. Пользователь сначала попадает в лобби, создаёт комнату или вводит код комнаты, затем переходит на игровой экран. Все игровые решения принимает сервер.
+
+В проекте нет внешней базы данных, очереди сообщений, сторонней авторизации или внешнего API. Все комнаты и состояния игр хранятся в памяти Node.js процесса.
+
+## C4 Container 
+
+Контейнеры здесь - это крупные исполняемые части системы: браузерный клиент, Node.js приложение и in-memory хранилище внутри процесса.
+
+### Контейнер Browser Client
+
+Файлы:
+- `public/lobby.html`
+- `public/lobby.js`
+- `public/index.html`
+- `public/client.js`
+- `public/game-over-modal.js`
+
+Задачи:
+- показать лобби
+- сохранить `roomId` и `userId` в browser storage
+- подключиться к Socket.IO
+- отправлять игровые действия
+- рендерить действия
+- показать финальную заставку
+
+браузер не создаёт и не изменяет авторитетный game state.
+
+### Контейнер Node.js Application
+
+Файлы:
+- `server.js`
+- `game/state.js`
+- `game/engine.js`
+- `game/economy.js`
+- `storage/memory.js`
+
+Задачи:
+- раздача статических файлов
+- Socket.IO события
+- создание комнат
+- назначение ролей
+- очередь действий
+- расчёт покупок, улучшений, продаж, прибыли и победителя
+- серверный таймер раундов
+
+## C4 Component 
+
+### Express Routes
+
+Файл: `server.js`
+
+Маршруты:
+- `GET /` отдаёт `public/lobby.html`;
+- `GET /lobby` отдаёт `public/lobby.html`;
+- `GET /game` отдаёт `public/index.html`;
+- `express.static(PUBLIC_DIR)` отдаёт `public/client.js`, `public/lobby.js`, `public/game-over-modal.js` и другие статические файлы.
+
+### Socket.IO Gateway
+
+Файл: `server.js`
+
+События от клиента:
+Событие | Что передает | Назначение
+`room_create` | `{ userId? }` | Создать новую комнату
+`room_join` | `{ roomId, userId? }` | Подключиться к комнате из лобби
+`join` | `{ roomId, userId? }` | Войти в комнату на странице игры
+`action` | `{ actionId, type, payload }` | Отправить игровое действие
+`restart_game` | none | Сбросить партию в текущей комнате
+
+События от сервера:
+Событие | Что передает | Назначение
+`room_created` | `{ roomId, userId, role }` | Комната создана
+`room_joined` | `{ roomId, userId, role }` | Игрок вошёл 
+`hello` | `{ userId, role, roomId }` | Подтверждение входа в игру 
+`state_snapshot` | `{ state }` | Полный снимок состояния 
+`round_tick` | `{ round, secondsLeft, roundEndsAt }` | Обновление таймера 
+`round_ended` | `{ roundResult }` | Итоги раунда 
+`game_over` | `{ winner, finalBalances }` | Игра завершена 
+`action_rejected` | `{ actionId, code, message }` | Игровое действие отклонено 
+`room_error` | `{ code, message }` | Ошибка комнаты 
+
+## C4 Code
+
+На уровне кода проект разделён на небольшие CommonJS-модули.
+
+class server_js {
+  +generateUserId()
+  +normalizeUserId(userId)
+  +normalizeRoomId(roomId)
+  +createUniqueRoom()
+  +assignRole(room, userId)
+  +bindSocketToRoom(socket, room, userId, role)
+  +maybeStartRoomGame(room)
+  +restartRoomGame(room)
+  +joinRoomForGame(socket, payload)
+  +processActionQueue(room)
+}
+
+class memory_js {
+  +createRoom(roomId)
+  +getOrCreateRoom(roomId)
+  +getRoom(roomId)
+  +getRooms()
+  +resetRooms()
+}
+
+class state_js {
+  +tileBonusByDistance(x, y, width, height)
+  +createInitialState(roomId)
+}
+
+class engine_js {
+  +getBuyPrice(tileBonus)
+  +getUpgradeCost(tile)
+  +startGame(room, now)
+  +applyAction(room, role, action)
+  +endRound(room, now)
+  +tick(room, now)
+  +getPublicState(room)
+}
+
+class economy_js {
+  +demandIntercept(round)
+  +demandAtPrice(round, price)
+  +allocateDemandByPrices(totalDemand, priceA, priceB, capacityA, capacityB)
+  +settleRound(params)
+}
+
+взаимодействия:
+server_js --> memory_js
+server_js --> state_js
+server_js --> engine_js
+memory_js --> state_js
+engine_js --> economy_js
+
+
+### State model
+
+Главный объект состояния находится в `room.state`.
+
+```js
+{
+  roomId,
+  width,
+  height,
+  maxRounds,
+  roundSeconds,
+  baseYield,
+  maxPlotK,
+  status,
+  round,
+  roundEndsAt,
+  secondsLeft,
+  freePlots,
+  players: {
+    A: {
+      role,
+      userId,
+      balance,
+      price,
+      finishedRound,
+      kpi: { numPlots, avgK, forecastYield }
+    },
+    B: { ... }
+  },
+  tiles: [
+    { id, x, y, owner, tileBonus, k }
+  ],
+  marketPreview,
+  lastRoundResult
+}
+```
+
+### Room model
+
+Комната оборачивает `state` и добавляет технические структуры для сервера:
+
+```js
+{
+  roomId,
+  state,
+  processedActionIds: Set,
+  actionQueue: [],
+  processingQueue: false,
+  connectedUsers: Map
+}
+```
+
+`processedActionIds` нужен для cлучая, если клиент повторно отправит тот же `actionId`.  Сервер не применит действие второй раз.
+
+`actionQueue` нужна для строгого порядка обработки действий в комнате. Если два игрока покупают одну клетку, победит первое действие в очереди.
+
+## Runtime-сценарии
+
+### Создание комнаты
+
+  Player->>Lobby: Нажимает "Создать игру"
+  Lobby->>Server: room_create { userId? }
+  Server->>Server: generateRoomCode()
+  Server->>Storage: createRoom(roomId)
+  Storage->>State: createInitialState(roomId)
+  State-->>Storage: gameState status=waiting
+  Storage-->>Server: room
+  Server->>Server: assignRole(room, userId) => A
+  Server-->>Lobby: room_created { roomId, userId, role }
+  Lobby->>Lobby: save roomId/userId
+  Lobby->>Player: redirect /game
+
+
+### Подключение второго игрока и старт игры
+
+  PlayerB->>Lobby: Вводит код комнаты
+  Lobby->>Server: room_join { roomId, userId? }
+  Server->>Server: assignRole(room, userId) => B
+  Server->>Engine: startGame(room)
+  Engine-->>Server: state.status = running
+  Server-->>Lobby: room_joined { roomId, userId, role }
+  Server-->>Clients: state_snapshot { state }
+  Server-->>Clients: round_tick { secondsLeft }
+
+
+### Покупка участка
+
+  Player->>Client: Выбирает клетку и нажимает "Купить"
+  Client->>Server: action { actionId, type: BUY_PLOT, payload: { tileId } }
+  Server->>Server: room.actionQueue.push(action)
+  Server->>Engine: applyAction(room, role, action)
+  Engine->>Room: Проверяет free, adjacent, balance
+  Engine->>Room: tile.owner = role, balance -= price
+  Engine-->>Server: { changed: true }
+  Server-->>Client: state_snapshot { state }
+  Client->>Client: render(state)
+
+
+### Завершение раунда
+
+  Timer->>Server
+  Server->>Engine: tick(room, Date.now())
+  Engine->>Engine: now >= roundEndsAt?
+  Engine->>Economy: settleRound({ prices, production })
+  Economy-->>Engine: roundResult
+  Engine->>Engine: balance += profit
+  Engine-->>Server: { roundEnded, roundResult, gameOver? }
+  Server-->>Clients: state_snapshot
+  Server-->>Clients: round_ended
+  alt gameOver
+    Server-->>Clients: game_over
+  else next round
+    Server-->>Clients: round_tick
+  end
+
+
+## Сервер-авторитетная логика
+
+Клиентская сторона содержит копии некоторых формул только для подсказок UI:
+- цена покупки на кнопке;
+- цена улучшения на кнопке;
+- доступность кнопок.
+
+Но итоговое решение всегда принимает сервер:
+- `applyAction` проверяет роль;
+- проверяет статус игры;
+- проверяет `actionId`;
+- проверяет владельца клетки;
+- проверяет соседство;
+- проверяет деньги;
+- меняет state;
+- рассылает новый `state_snapshot`.
+
+Это защищает проект от ситуации, когда пользователь меняет JavaScript в браузере и пытается купить недоступную клетку или получить деньги.
+
+## Обработка ошибок
+
+Ошибки делятся на два типа.
+
+### Ошибки комнаты
+
+Отправляются как `room_error`:
+- `ROOM_REQUIRED`;
+- `ROOM_NOT_FOUND`;
+- `ROOM_FULL`;
+- `INVALID_ROOM_CODE`;
+- `NOT_IN_ROOM`.
+
+Их обрабатывают `public/lobby.js` и `public/client.js`.
+
+### Ошибки игровых действий
+
+Отправляются как `action_rejected`:
+- `NO_ROLE`;
+- `GAME_NOT_RUNNING`;
+- `INVALID_ACTION`;
+- `INVALID_ACTION_ID`;
+- `PLOT_NOT_FOUND`;
+- `PLOT_OCCUPIED`;
+- `NOT_ADJACENT`;
+- `INSUFFICIENT_FUNDS`;
+- `NOT_OWNER`;
+- `K_MAXED`;
+- `INVALID_PRICE`;
+- `UNKNOWN_ACTION`.
+
+Функция `applyAction` не бросает исключения для обычных игровых ошибок, а возвращает объект `rejected`. Это упрощает обработку на Socket.IO уровне.
+
+
+## Основная логика
+
+1. `lobby.js` создаёт или подключает комнату.
+2. `server.js` создаёт room через `storage/memory.js`.
+3. `storage/memory.js` создаёт state через `game/state.js`.
+4. `client.js` отправляет игровые `action`.
+5. `server.js` кладёт action в очередь.
+6. `game/engine.js` валидирует и применяет action.
+7. `game/economy.js` считает итоги раунда.
+8. `server.js` рассылает `state_snapshot`.
+9. `client.js` вызывает `render(state)`.
+
+
+![C4 SystemContext](c4 картинки/SystemContext.png)
+![C4 Component](c4 картинки/Component.png)
+![C4 Container](c4 картинки/Container.png)
+
 # Экономическая игра «Рынок малины»
 
 **«Рынок малины»** — веб-симулятор ценовой конкуренции двух фермеров с общей картой земли.  
